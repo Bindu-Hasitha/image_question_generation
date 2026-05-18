@@ -8,10 +8,56 @@ from app import generate_question, initialize_vertex, process_question_with_scen
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 CREDENTIALS_FILE = PROJECT_ROOT / "turito-questions-4801fdc9d428.json"
+SECRETS_SECTIONS = (
+    "gcp_service_account",
+    "gcp_credentials",
+    CREDENTIALS_FILE.stem,
+)
 
 
 def ensure_project_cwd() -> None:
     os.chdir(PROJECT_ROOT)
+
+
+def _write_credentials_file(data: dict) -> None:
+    with open(CREDENTIALS_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(CREDENTIALS_FILE)
+
+
+def _section_to_dict(section) -> dict:
+    return {key: section[key] for key in section}
+
+
+def setup_credentials_from_secrets() -> bool:
+    """Materialize GCP credentials from disk, env, or Streamlit secrets."""
+    ensure_project_cwd()
+
+    if CREDENTIALS_FILE.is_file():
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(CREDENTIALS_FILE)
+        return True
+
+    env_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    if env_path and Path(env_path).is_file():
+        return True
+
+    try:
+        secrets = st.secrets
+    except Exception:
+        return False
+
+    for section_name in SECRETS_SECTIONS:
+        if section_name in secrets:
+            _write_credentials_file(_section_to_dict(secrets[section_name]))
+            return True
+
+    if "gcp_credentials_json" in secrets:
+        raw = secrets["gcp_credentials_json"]
+        payload = json.loads(raw) if isinstance(raw, str) else dict(raw)
+        _write_credentials_file(payload)
+        return True
+
+    return False
 
 
 def resolve_image_path(output_dir: str, filename: str) -> Path | None:
@@ -29,10 +75,11 @@ def resolve_image_path(output_dir: str, filename: str) -> Path | None:
 @st.cache_resource(show_spinner="Loading Vertex AI models…")
 def load_models():
     ensure_project_cwd()
-    if not CREDENTIALS_FILE.is_file():
+    if not setup_credentials_from_secrets():
         raise FileNotFoundError(
             f"Service account JSON not found: {CREDENTIALS_FILE.name}. "
-            "Place it in the app root or set GOOGLE_APPLICATION_CREDENTIALS."
+            "Place it in the app root, set GOOGLE_APPLICATION_CREDENTIALS, "
+            "or add a [gcp_service_account] section in Streamlit secrets."
         )
     return initialize_vertex()
 
@@ -97,20 +144,21 @@ st.set_page_config(
 st.title("Image question generator")
 st.caption("Generates questions and composite cards on this host (no separate API).")
 
+setup_credentials_from_secrets()
+
 with st.sidebar:
     st.header("Deploy")
     st.markdown(
         "Run with `streamlit run main.py`. Requires `app.py`, Vertex credentials, "
         "and dependencies on the same machine. Outputs are written under the project root."
     )
-    cred_ok = CREDENTIALS_FILE.is_file() or bool(
-        os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
-    )
+    cred_ok = setup_credentials_from_secrets()
     if cred_ok:
-        st.success("Credentials file detected.")
+        st.success("Credentials ready.")
     else:
         st.warning(
-            f"Place `{CREDENTIALS_FILE.name}` in the project root "
+            f"Add `[gcp_service_account]` in Streamlit secrets (service account fields), "
+            f"place `{CREDENTIALS_FILE.name}` in the project root, "
             "or set `GOOGLE_APPLICATION_CREDENTIALS`."
         )
 
@@ -128,7 +176,7 @@ with st.form("generate_form"):
 if submitted:
     if not all([subject.strip(), grade.strip(), chapter.strip(), topics.strip()]):
         st.error("Please fill in subject, grade, chapter, and topics.")
-    elif not cred_ok:
+    elif not setup_credentials_from_secrets():
         st.error("Missing Google Cloud credentials. See the sidebar.")
     else:
         payload = {
