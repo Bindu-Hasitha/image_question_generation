@@ -1,0 +1,8 @@
+# Deploy: streamlit run main.py
+# Also ship app.py and Google service account JSON (or GOOGLE_APPLICATION_CREDENTIALS).
+# Tested with Python 3.10–3.13.
+
+streamlit==1.45.1
+flask==3.1.1
+google-cloud-aiplatform==1.93.0
+vertexai==1.71.1
