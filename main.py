@@ -72,6 +72,32 @@ def resolve_image_path(output_dir: str, filename: str) -> Path | None:
     return None
 
 
+CARDS_PER_ROW = 2
+
+
+def render_question_card(q: dict, output_dir_abs: str, output_dir_name: str) -> None:
+    qnum = q.get("question_num", "?")
+    with st.container(border=True):
+        st.subheader(f"Question {qnum}")
+
+        img_info = q.get("image_files") or {}
+        filename = img_info.get("composite_card") or f"Q{qnum}_complete_card.png"
+        image_path = resolve_image_path(output_dir_abs, filename)
+
+        if image_path:
+            st.image(
+                str(image_path),
+                caption="Composite question card",
+                use_container_width=True,
+            )
+        else:
+            st.info(f"Image not found: `{output_dir_name}/{filename}`")
+
+        with st.expander("Answer key"):
+            st.markdown(f"**Correct:** {q.get('correct_answer', '—')}")
+            st.write(q.get("explanation", ""))
+
+
 @st.cache_resource(show_spinner="Loading Vertex AI models…")
 def load_models():
     ensure_project_cwd()
@@ -122,17 +148,6 @@ def run_generation(
         "question_count": len(processed_questions),
         "questions": processed_questions,
     }
-
-
-def render_options(question: dict) -> None:
-    options = question.get("options") or {}
-    option_type = question.get("option_type", "text")
-    if option_type == "image":
-        st.caption("Options are image-based (see composite card).")
-    for letter in ("A", "B", "C", "D"):
-        text = options.get(letter, "")
-        if text and str(text).lower() not in ("n/a", "null", "none"):
-            st.markdown(f"**{letter})** {text}")
 
 
 st.set_page_config(
@@ -217,43 +232,13 @@ if submitted:
             f"Output folder: `{output_dir}`"
         )
 
-        for q in questions:
-            qnum = q.get("question_num", "?")
-            with st.container(border=True):
-                st.subheader(f"Question {qnum}")
-                st.markdown(f"**{q.get('question_text', '')}**")
-
-                meta_cols = st.columns(3)
-                meta_cols[0].caption(f"Difficulty: {q.get('difficulty', '—')}")
-                meta_cols[1].caption(f"Option type: {q.get('option_type', '—')}")
-                meta_cols[2].caption(f"Concepts: {q.get('concepts', '—')}")
-
-                img_info = q.get("image_files") or {}
-                filename = img_info.get("composite_card") or f"Q{qnum}_complete_card.png"
-                image_path = resolve_image_path(
-                    result.get("output_dir_abs", output_dir), filename
-                )
-
-                img_col, detail_col = st.columns([1, 1])
-                with img_col:
-                    if image_path:
-                        st.image(
-                            str(image_path),
-                            caption="Composite question card",
-                            use_container_width=True,
-                        )
-                    else:
-                        st.info(f"Image not found: `{output_dir}/{filename}`")
-                with detail_col:
-                    desc = q.get("question_image_description")
-                    if desc and str(desc).lower() not in ("n/a", "null", "none"):
-                        st.markdown("**Question image description**")
-                        st.write(desc)
-                    st.markdown("**Options**")
-                    render_options(q)
-                    with st.expander("Answer key"):
-                        st.markdown(f"**Correct:** {q.get('correct_answer', '—')}")
-                        st.write(q.get("explanation", ""))
+        output_dir_abs = result.get("output_dir_abs", output_dir)
+        for row_start in range(0, len(questions), CARDS_PER_ROW):
+            row = questions[row_start : row_start + CARDS_PER_ROW]
+            cols = st.columns(CARDS_PER_ROW)
+            for col, q in zip(cols, row):
+                with col:
+                    render_question_card(q, output_dir_abs, output_dir)
 
         with st.expander("Full generation result"):
             st.code(json.dumps(result, indent=2, default=str), language="json")

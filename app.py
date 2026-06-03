@@ -37,9 +37,17 @@ def get_prompt(subject,grade,chapter,topics,number):
     prompt=f"""
     you are a {subject} education expert creating visual multiple-choice questions for grade: {grade} from the chapter: {chapter} 
     in the topics: {topics}. Generate {number} questions, where EITHER the question or the options or BOTH can be images.
+
+LABEL AND DIAGRAM CONSISTENCY (CRITICAL):
+- If the question text refers to any label on a diagram, that exact label MUST appear in the question_image_description and MUST be described as clearly visible on the diagram.
+- List every label used in the question text inside question_image_description.
+- Never reference a label, number, or letter in question_text that is not explicitly included and shown in question_image_description.
+- Do not ask students to identify a numbered or lettered part unless the image description states that number or letter is printed on the diagram.
+- Before finalizing each question, verify: every label mentioned in question_text exists in question_image_description with a clear visual placement.
+
     for each question, specify:
-1. **Question Text**: A clear, specific question
-2. **Question Image Description**: Description of the main image (question image) (if applicable, otherwise "N/A")
+1. **Question Text**: A clear, specific question (only reference diagram labels that will be drawn)
+2. **Question Image Description**: Description of the main image (question image) (if applicable, otherwise "N/A"). Must include ALL labels/numbers/letters referenced in question_text, each clearly placed on the diagram.
 3. **Option Type**: Specify "text" or "image"
 4. **Options**: 
    - If text options: Provide 4 text choices (A, B, C, D)
@@ -165,9 +173,16 @@ def create_composite_question_card(question_data,imagen_model,output_path,subjec
     - Simple and uncluttered design
     - Ensure all text and symbols are clearly legible
     - No watermarks or additional text
+    - DIAGRAM LABEL RULE: Every number, letter, or name referenced in the question text (e.g. "part labelled 3", "structure B") MUST appear clearly on the diagram in the TOP SECTION. Do not omit any referenced label. Do not add unreferenced labels that could confuse students.
 """
     prompt_parts=[]
     prompt_parts.append(f"you are an expert in creating educational question cards. you will be given image descriptions of the question and the options. Understand the question description and the option descriptions properly and create a complete educational {subject} question card with the following layout:")
+    prompt_parts.append("")
+    prompt_parts.append("LABEL CONSISTENCY (CRITICAL):")
+    prompt_parts.append(f'- Read the question text below: "{question_data["question_text"]}"')
+    prompt_parts.append("- Draw the diagram so EVERY label/number/letter mentioned in that question text is visible on the figure (e.g. if the question says \"labelled 3\", the digit \"3\" must appear on the correct part).")
+    prompt_parts.append("- Match the question_image_description exactly for all labels and their positions.")
+    prompt_parts.append("- Never produce a diagram missing a label that the question asks about.")
     prompt_parts.append("")
     if question_data.get('question_image_description'):
         prompt_parts.append("TOP SECTION:")
@@ -188,6 +203,7 @@ def create_composite_question_card(question_data,imagen_model,output_path,subjec
             prompt_parts.append(f"  Option {letter} (labeled clearly): {option_desc}")
     prompt_parts.append("")
     prompt_parts.append("LAYOUT REQUIREMENTS:")
+    prompt_parts.append("- If the diagram uses numeric or alphabetic labels, render each label legibly on the image")
     prompt_parts.append("- Professional educational poster format")
     prompt_parts.append("- Clean white background")
     prompt_parts.append("- Clear section separations with subtle lines")
